@@ -1,0 +1,131 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  viewer
+}
+
+enum InventoryStatus {
+  OPTIMAL
+  WARNING
+  CRITICAL
+}
+
+enum ShipmentStatus {
+  IN_TRANSIT
+  DELAYED
+  DELIVERED
+}
+
+enum AlertSeverity {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum AlertType {
+  STOCKOUT
+  DELAY
+  SUPPLIER
+}
+
+enum AuditAction {
+  LOGIN
+  LOGOUT
+  PASSWORD_RESET_REQUEST
+  PASSWORD_RESET_COMPLETE
+  INGEST
+  RUN_ETL
+  RUN_INFERENCE
+  AI_CHAT
+  AI_TOOL_CALL
+  RESTOCK_TRIGGER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         UserRole @default(viewer)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  auditLogs    AuditLog[]
+  resetTokens  PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model InventoryItem {
+  id                    String          @id @default(cuid())
+  sku                   String          @unique
+  currentStock          Int
+  reorderPoint          Int
+  predictedStockoutDays Int
+  status                InventoryStatus
+  warehouse             String
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+}
+
+model Shipment {
+  id          String         @id @default(cuid())
+  externalId  String         @unique
+  sku         String
+  origin      String
+  destination String
+  status      ShipmentStatus
+  eta         String
+  quantity    Int
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model ForecastPoint {
+  id        String   @id @default(cuid())
+  date      String   @unique
+  actual    Int
+  predicted Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SupplyAlert {
+  id        String        @id @default(cuid())
+  type      AlertType
+  message   String
+  timestamp String
+  severity  AlertSeverity
+  createdAt DateTime      @default(now())
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  userId    String?
+  userEmail String?
+  action    AuditAction
+  target    String?
+  meta      Json?
+  createdAt DateTime    @default(now())
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+}

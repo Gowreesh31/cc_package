@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+cdk
+glue-jobs
+lambda
+notebooks
+mock-data
+README.md
+metadata.json
+

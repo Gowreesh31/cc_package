@@ -1,0 +1,5 @@
+{
+  "name": "Smart Supply Chain AWS Project",
+  "description": "A complete AWS-based Smart Supply Chain Visibility & Predictive Restocking System with CDK, Glue, SageMaker, and Lambda.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,100 @@
+# ─────────────────────────────────────────────────────────
+# 3-Container Smart Supply Chain Stack
+#
+#  Container 1: nginx   — reverse proxy (public entry, port 80)
+#  Container 2: api     — Express + Vite-built React SPA
+#  Container 3: redis   — session store & job queue
+# ─────────────────────────────────────────────────────────
+
+services:
+
+  # ── Container 1: Nginx reverse proxy ─────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: sc_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: always
+    networks:
+      - frontend-net
+
+  # ── Container 2: Express API + React SPA (built) ─────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sc_api
+    environment:
+      - NODE_ENV=production
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - APP_URL=${APP_URL:-}
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-sc_user}:${POSTGRES_PASSWORD:-sc_password}@postgres:5432/${POSTGRES_DB:-supply_chain}?schema=public
+      - SESSION_SECRET=${SESSION_SECRET}
+      - SEED_DEFAULT_PASSWORD=${SEED_DEFAULT_PASSWORD:-password}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    restart: always
+    networks:
+      - frontend-net
+      - backend-net
+
+  # ── Container 3: Redis (session store + job queue) ───
+  redis:
+    image: redis:7-alpine
+    container_name: sc_redis
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: always
+    networks:
+      - backend-net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: sc_postgres
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-supply_chain}
+      - POSTGRES_USER=${POSTGRES_USER:-sc_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-sc_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sc_user} -d ${POSTGRES_DB:-supply_chain}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - backend-net
+
+# ── Volumes ───────────────────────────────────────────
+volumes:
+  redis_data:
+  postgres_data:
+
+# ── Networks (isolate frontend traffic from backend) ──
+networks:
+  frontend-net:
+    driver: bridge
+  backend-net:
+    driver: bridge
