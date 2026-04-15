@@ -456,32 +456,32 @@ async function startServer() {
       }));
       contents.push({ role: "user", parts: [{ text: parsed.data.message }] });
 
-      console.log(`Sending content to Gemini...`);
+      console.log(`Sending content to Gemini (Stable SDK - Robust Fallback)...`);
       let result;
-      try {
-        const model = genAI.getGenerativeModel({
-          model: "gemini-1.5-flash",
-          systemInstruction: "You are an AI Supply Chain Copilot. Use tools for operational data and stay concise.",
-          tools: [{ functionDeclarations: toolDefinitions }] as any,
-        });
-        result = await model.generateContent({
-          contents,
-        });
-      } catch (primaryErr: any) {
-        console.warn("Primary model (gemini-1.5-flash) failed, attempting fallback...", primaryErr.message);
+      const modelNames = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-1.5-flash-8b", "gemini-1.0-pro"];
+      let lastError = null;
+
+      for (const modelName of modelNames) {
         try {
+          console.log(`Attempting model: ${modelName}`);
           const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash-latest",
+            model: modelName,
             systemInstruction: "You are an AI Supply Chain Copilot. Use tools for operational data and stay concise.",
             tools: [{ functionDeclarations: toolDefinitions }] as any,
           });
-          result = await model.generateContent({
-            contents,
-          });
-        } catch (aiError: any) {
-          console.error("AI SDK Critical Error (Fallback also failed):", aiError);
-          return jsonError(res, 500, "AI_SDK_ERROR", aiError.message || "Failed to communicate with AI service.");
+          result = await model.generateContent({ contents });
+          console.log(`Successfully connected using model: ${modelName}`);
+          break; // Found a working model!
+        } catch (err: any) {
+          console.warn(`Model ${modelName} failed: ${err.message}`);
+          lastError = err;
+          continue;
         }
+      }
+
+      if (!result) {
+        console.error("AI SDK Critical Error (All models failed):", lastError);
+        return jsonError(res, 500, "AI_SDK_ERROR", lastError?.message || "All Gemini models failed to respond. Please check your API key permissions.");
       }
 
       let maxIterations = 5;
