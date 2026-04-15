@@ -138,6 +138,7 @@ async function startServer() {
   app.use(
     helmet({
       contentSecurityPolicy: false,
+      hsts: false,
     }),
   );
   app.use(
