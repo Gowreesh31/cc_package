@@ -485,7 +485,7 @@ async function startServer() {
 
       console.log(`Sending content to Gemini (Stable SDK - Robust Fallback)...`);
       let result;
-      const modelNames = ["gemini-1.0-pro", "gemini-pro", "gemini-1.5-flash-001", "gemini-1.5-flash-8b", "gemini-2.0-flash"];
+      const modelNames = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
       let lastError = null;
       let workingModelName = "";
 
