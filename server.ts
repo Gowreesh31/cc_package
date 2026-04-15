@@ -404,29 +404,56 @@ async function startServer() {
     {
       name: "get_inventory_status",
       description: "Get current inventory stock levels.",
-      parameters: { type: "OBJECT" as any, properties: { status_filter: { type: "STRING" as any, enum: ["ALL", "CRITICAL", "WARNING", "OPTIMAL"] } } },
+      parameters: { 
+        type: "object", 
+        properties: { 
+          status_filter: { 
+            type: "string", 
+            enum: ["ALL", "CRITICAL", "WARNING", "OPTIMAL"] 
+          } 
+        } 
+      },
     },
     {
       name: "get_shipments",
       description: "Get shipment tracking data.",
-      parameters: { type: "OBJECT" as any, properties: { status_filter: { type: "STRING" as any, enum: ["ALL", "IN_TRANSIT", "DELAYED", "DELIVERED"] } } },
+      parameters: { 
+        type: "object", 
+        properties: { 
+          status_filter: { 
+            type: "string", 
+            enum: ["ALL", "IN_TRANSIT", "DELAYED", "DELIVERED"] 
+          } 
+        } 
+      },
     },
     {
       name: "get_forecast",
       description: "Get demand forecast data.",
-      parameters: { type: "OBJECT" as any, properties: {} },
+      parameters: { type: "object", properties: {} },
     },
     {
       name: "get_alerts",
       description: "Get current system alerts.",
-      parameters: { type: "OBJECT" as any, properties: { severity_filter: { type: "STRING" as any, enum: ["ALL", "HIGH", "MEDIUM", "LOW"] } } },
+      parameters: { 
+        type: "object", 
+        properties: { 
+          severity_filter: { 
+            type: "string", 
+            enum: ["ALL", "HIGH", "MEDIUM", "LOW"] 
+          } 
+        } 
+      },
     },
     {
       name: "trigger_restock",
       description: "Trigger emergency restock order (admin only).",
       parameters: {
-        type: "OBJECT" as any,
-        properties: { sku: { type: "STRING" as any }, quantity: { type: "NUMBER" as any } },
+        type: "object",
+        properties: { 
+          sku: { type: "string" }, 
+          quantity: { type: "number" } 
+        },
         required: ["sku"],
       },
     },
@@ -458,7 +485,7 @@ async function startServer() {
 
       console.log(`Sending content to Gemini (Stable SDK - Robust Fallback)...`);
       let result;
-      const modelNames = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-1.5-pro", "gemini-1.0-pro"];
+      const modelNames = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-1.5-pro"];
       let lastError = null;
       let workingModelName = "";
 
