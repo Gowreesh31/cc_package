@@ -448,15 +448,22 @@ async function startServer() {
       }));
       contents.push({ role: "user", parts: [{ text: parsed.data.message }] });
 
-      let response = await ai.models.generateContent({
-        model: "gemini-1.5-flash-latest",
-        contents,
-        config: {
-          systemInstruction:
-            "You are an AI Supply Chain Copilot. Use tools for operational data and stay concise.",
-          tools: [{ functionDeclarations: toolDefinitions }],
-        },
-      });
+      console.log(`Sending content to Gemini...`);
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-1.5-flash-latest",
+          contents,
+          config: {
+            systemInstruction:
+              "You are an AI Supply Chain Copilot. Use tools for operational data and stay concise.",
+            tools: [{ functionDeclarations: toolDefinitions }],
+          },
+        });
+      } catch (aiError: any) {
+        console.error("AI SDK Critical Error:", aiError);
+        return jsonError(res, 500, "AI_SDK_ERROR", aiError.message || "Failed to communicate with AI service.");
+      }
 
       let maxIterations = 5;
       while (maxIterations > 0) {

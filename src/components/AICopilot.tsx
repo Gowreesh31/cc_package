@@ -170,7 +170,19 @@ export const AICopilot = ({ csrfToken }: { csrfToken: string | null }) => {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to get response');
+        // Handle both simple string errors and nested object errors
+        const backendError = data.error;
+        let msg = 'Failed to get response';
+
+        if (typeof backendError === 'string') {
+          msg = backendError;
+        } else if (backendError && typeof backendError.message === 'string') {
+          msg = backendError.message;
+        } else if (data.message && typeof data.message === 'string') {
+          msg = data.message;
+        }
+
+        throw new Error(msg);
       }
 
       const assistantMessage: Message = {
