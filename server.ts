@@ -135,7 +135,11 @@ async function startServer() {
       customSuccessMessage: (req) => `${req.method} ${req.url} completed`,
     }),
   );
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+    }),
+  );
   app.use(
     cors({
       credentials: true,
