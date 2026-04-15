@@ -427,10 +427,18 @@ async function startServer() {
   app.post("/api/chat", authenticate, async (req, res) => {
     try {
       const parsed = chatSchema.safeParse(req.body);
-      if (!parsed.success) return jsonError(res, 400, "VALIDATION_ERROR", "Message is required.");
-      if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "MY_GEMINI_API_KEY") {
+      if (!parsed.success) {
+        console.error("Chat Validation Error:", parsed.error);
+        return jsonError(res, 400, "VALIDATION_ERROR", "Message is required.");
+      }
+      
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
+        console.error("Chat Error: Gemini API key not configured correctly.");
         return jsonError(res, 500, "GEMINI_KEY_MISSING", "Gemini API key not configured.");
       }
+
+      console.log(`Chat Request received. API Key exists (prefix: ${apiKey.slice(0, 8)}...)`);
 
       const user = (req as any).user as AppUser;
       const history = await loadChatHistory(user.id);

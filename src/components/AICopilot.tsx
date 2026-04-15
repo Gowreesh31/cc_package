@@ -182,10 +182,25 @@ export const AICopilot = ({ csrfToken }: { csrfToken: string | null }) => {
 
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error: any) {
+      console.error('Chat Error:', error);
+      
+      // Extract the most useful error message
+      let displayMessage = 'Something went wrong. Please try again.';
+      
+      if (typeof error === 'string') {
+        displayMessage = error;
+      } else if (error.message && typeof error.message === 'string') {
+        displayMessage = error.message;
+      } else if (error.error && typeof error.error === 'string') {
+        displayMessage = error.error;
+      } else if (error.error && typeof error.error.message === 'string') {
+        displayMessage = error.error.message;
+      }
+
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `⚠️ ${error.message || 'Something went wrong. Please try again.'}`,
+        content: `⚠️ ${displayMessage}`,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
