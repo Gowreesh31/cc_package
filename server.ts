@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import bcrypt from "bcryptjs";
 import cookieParser from "cookie-parser";
 import cors from "cors";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { AuditAction, PrismaClient, UserRole } from "@prisma/client";
 import { RedisStore } from "connect-redis";
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -21,8 +21,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 void __dirname;
 
-// Initialize AI with environment-based config
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Initialize AI with stable SDK
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 const prisma = new PrismaClient();
 const redisClient = createClient({ url: process.env.REDIS_URL || "redis://localhost:6379" });
 
@@ -124,15 +124,12 @@ async function startServer() {
   await redisClient.connect();
   await prisma.$connect();
 
-  // DISCOVERY: List available AI models
-  try {
-    const models = await ai.models.list();
-    console.log("=== AVAILABLE AI MODELS ===");
-    models.models?.forEach((m) => console.log(`- ${m.name}`));
-    console.log("===========================");
-  } catch (err) {
-    console.error("Failed to list AI models:", err);
-  }
+  // DISCOVERY: List available AI models (using library-specific method)
+  /* 
+  @google/generative-ai does not expose a listModels method on the client by default in the same way. 
+  We will rely on the direct model request instead.
+  */
+  console.log("=== AI SYSTEM INITIALIZED (Stable SDK) ===");
 
   const app = express();
   const PORT = 3000;
@@ -407,29 +404,29 @@ async function startServer() {
     {
       name: "get_inventory_status",
       description: "Get current inventory stock levels.",
-      parameters: { type: Type.OBJECT, properties: { status_filter: { type: Type.STRING, enum: ["ALL", "CRITICAL", "WARNING", "OPTIMAL"] } } },
+      parameters: { type: "OBJECT" as any, properties: { status_filter: { type: "STRING" as any, enum: ["ALL", "CRITICAL", "WARNING", "OPTIMAL"] } } },
     },
     {
       name: "get_shipments",
       description: "Get shipment tracking data.",
-      parameters: { type: Type.OBJECT, properties: { status_filter: { type: Type.STRING, enum: ["ALL", "IN_TRANSIT", "DELAYED", "DELIVERED"] } } },
+      parameters: { type: "OBJECT" as any, properties: { status_filter: { type: "STRING" as any, enum: ["ALL", "IN_TRANSIT", "DELAYED", "DELIVERED"] } } },
     },
     {
       name: "get_forecast",
       description: "Get demand forecast data.",
-      parameters: { type: Type.OBJECT, properties: {} },
+      parameters: { type: "OBJECT" as any, properties: {} },
     },
     {
       name: "get_alerts",
       description: "Get current system alerts.",
-      parameters: { type: Type.OBJECT, properties: { severity_filter: { type: Type.STRING, enum: ["ALL", "HIGH", "MEDIUM", "LOW"] } } },
+      parameters: { type: "OBJECT" as any, properties: { severity_filter: { type: "STRING" as any, enum: ["ALL", "HIGH", "MEDIUM", "LOW"] } } },
     },
     {
       name: "trigger_restock",
       description: "Trigger emergency restock order (admin only).",
       parameters: {
-        type: Type.OBJECT,
-        properties: { sku: { type: Type.STRING }, quantity: { type: Type.NUMBER } },
+        type: "OBJECT" as any,
+        properties: { sku: { type: "STRING" as any }, quantity: { type: "NUMBER" as any } },
         required: ["sku"],
       },
     },
@@ -449,7 +446,7 @@ async function startServer() {
         return jsonError(res, 500, "GEMINI_KEY_MISSING", "Gemini API key not configured.");
       }
 
-      console.log(`Chat Request received. API Key exists (prefix: ${apiKey.slice(0, 8)}...)`);
+      console.log(`Chat Request received (Stable SDK Migration).`);
 
       const user = (req as any).user as AppUser;
       const history = await loadChatHistory(user.id);
@@ -460,30 +457,26 @@ async function startServer() {
       contents.push({ role: "user", parts: [{ text: parsed.data.message }] });
 
       console.log(`Sending content to Gemini...`);
-      let response;
+      let result;
       try {
-        // Try the stable 1.5 Flash model first
-        response = await ai.models.generateContent({
+        const model = genAI.getGenerativeModel({
           model: "gemini-1.5-flash",
+          systemInstruction: "You are an AI Supply Chain Copilot. Use tools for operational data and stay concise.",
+          tools: [{ functionDeclarations: toolDefinitions }] as any,
+        });
+        result = await model.generateContent({
           contents,
-          config: {
-            systemInstruction:
-              "You are an AI Supply Chain Copilot. Use tools for operational data and stay concise.",
-            tools: [{ functionDeclarations: toolDefinitions }],
-          },
         });
       } catch (primaryErr: any) {
         console.warn("Primary model (gemini-1.5-flash) failed, attempting fallback...", primaryErr.message);
         try {
-          // Fallback to 1.5-flash-latest or 1.0 Pro
-          response = await ai.models.generateContent({
+          const model = genAI.getGenerativeModel({
             model: "gemini-1.5-flash-latest",
+            systemInstruction: "You are an AI Supply Chain Copilot. Use tools for operational data and stay concise.",
+            tools: [{ functionDeclarations: toolDefinitions }] as any,
+          });
+          result = await model.generateContent({
             contents,
-            config: {
-              systemInstruction:
-                "You are an AI Supply Chain Copilot. Use tools for operational data and stay concise.",
-              tools: [{ functionDeclarations: toolDefinitions }],
-            },
           });
         } catch (aiError: any) {
           console.error("AI SDK Critical Error (Fallback also failed):", aiError);
@@ -492,44 +485,46 @@ async function startServer() {
       }
 
       let maxIterations = 5;
+      let response = result.response;
+      
       while (maxIterations > 0) {
         const parts = response.candidates?.[0]?.content?.parts || [];
         const calls = parts.filter((p: any) => p.functionCall);
         if (calls.length === 0) break;
 
-        const toolResults: any[] = [];
+        const toolResponses: any[] = [];
         for (const part of calls) {
-          const name = part.functionCall.name as string;
+          const name = part.functionCall.name;
           const args = (part.functionCall.args || {}) as Record<string, any>;
-          let result: Record<string, unknown> = {};
+          let toolData: Record<string, unknown> = {};
 
           if (name === "get_inventory_status") {
             const status = args.status_filter;
             const data = await prisma.inventoryItem.findMany();
             const filtered = status && status !== "ALL" ? data.filter((d) => d.status === status) : data;
-            result = { inventoryItems: filtered, totalItems: filtered.length };
+            toolData = { inventoryItems: filtered, totalItems: filtered.length };
           } else if (name === "get_shipments") {
             const status = args.status_filter;
             const data = await prisma.shipment.findMany();
             const filtered = status && status !== "ALL" ? data.filter((d) => d.status === status) : data;
-            result = {
+            toolData = {
               shipments: filtered.map((d) => ({ id: d.externalId, sku: d.sku, origin: d.origin, destination: d.destination, status: d.status, eta: d.eta, quantity: d.quantity })),
               totalShipments: filtered.length,
             };
           } else if (name === "get_forecast") {
             const data = await prisma.forecastPoint.findMany({ orderBy: { date: "asc" } });
-            result = { forecastData: data, model: "Prophet (Time Series)", confidence: "92%" };
+            toolData = { forecastData: data, model: "Prophet (Time Series)", confidence: "92%" };
           } else if (name === "get_alerts") {
             const severity = args.severity_filter;
             const data = await prisma.supplyAlert.findMany({ orderBy: { createdAt: "desc" } });
             const filtered = severity && severity !== "ALL" ? data.filter((d) => d.severity === severity) : data;
-            result = { alerts: filtered, totalAlerts: filtered.length };
+            toolData = { alerts: filtered, totalAlerts: filtered.length };
           } else if (name === "trigger_restock") {
-            if (user.role !== UserRole.admin) result = { error: "Forbidden for current role." };
+            if (user.role !== UserRole.admin) toolData = { error: "Forbidden for current role." };
             else {
               const sku = String(args.sku || "");
               const item = await prisma.inventoryItem.findUnique({ where: { sku } });
-              if (!item) result = { success: false, error: `SKU ${sku} not found` };
+              if (!item) toolData = { success: false, error: `SKU ${sku} not found` };
               else {
                 await writeAuditLog({
                   userId: user.id,
@@ -538,20 +533,22 @@ async function startServer() {
                   target: sku,
                   meta: { quantity: args.quantity || 500 },
                 });
-                result = {
-                  success: true,
-                  orderId: `RO-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
-                  sku,
-                  quantity: args.quantity || 500,
-                  warehouse: item.warehouse,
-                  estimatedDelivery: "2-3 business days",
+                toolData = { 
+                  success: true, 
+                  message: `Restock order triggered for ${args.sku}`,
+                  warehouse: item.warehouse
                 };
               }
             }
-          } else {
-            result = { error: `Unknown tool: ${name}` };
           }
 
+          toolResponses.push({
+            functionResponse: {
+              name,
+              response: toolData
+            }
+          });
+          
           await writeAuditLog({
             userId: user.id,
             userEmail: user.email,
@@ -559,29 +556,31 @@ async function startServer() {
             target: name,
             meta: { args },
           });
-          toolResults.push({ functionResponse: { name, response: result } });
         }
 
-        response = await ai.models.generateContent({
-          model: "gemini-1.5-flash-latest",
-          contents: [...contents, { role: "model", parts }, { role: "user", parts: toolResults }],
-          config: {
-            systemInstruction: "You are an AI Supply Chain Copilot. Use tools for operational data and stay concise.",
-            tools: [{ functionDeclarations: toolDefinitions }],
-          },
+        // Add turn to history
+        contents.push({ role: "model", parts });
+        contents.push({ role: "function", parts: toolResponses });
+
+        const model = genAI.getGenerativeModel({ 
+          model: "gemini-1.5-flash",
+          systemInstruction: "You are an AI Supply Chain Copilot. Use tools for operational data and stay concise.",
+          tools: [{ functionDeclarations: toolDefinitions }] as any
         });
+        const nextResult = await model.generateContent({
+          contents,
+        });
+        response = nextResult.response;
         maxIterations--;
       }
 
-      const finalText =
-        response.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") ||
-        "I could not generate a response. Please try again.";
+      const finalText = response.text() || "I could not generate a response. Please try again.";
       await saveChatHistory(user.id, [...history, { role: "user", content: parsed.data.message }, { role: "assistant", content: finalText }]);
       await writeAuditLog({ userId: user.id, userEmail: user.email, action: AuditAction.AI_CHAT });
       res.json({ reply: finalText });
     } catch (error: any) {
-      req.log.error({ error }, "chat_failed");
-      return jsonError(res, 500, "CHAT_ERROR", "AI Copilot encountered an error.");
+      console.error("Chat execution failed (Stable SDK Migration):", error);
+      return jsonError(res, 500, "CHAT_ERROR", error.message || "AI Copilot encountered an error.");
     }
   });
 
