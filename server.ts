@@ -123,6 +123,16 @@ async function startServer() {
   await redisClient.connect();
   await prisma.$connect();
 
+  // DISCOVERY: List available AI models
+  try {
+    const models = await ai.models.list();
+    console.log("=== AVAILABLE AI MODELS ===");
+    models.models?.forEach((m) => console.log(`- ${m.name}`));
+    console.log("===========================");
+  } catch (err) {
+    console.error("Failed to list AI models:", err);
+  }
+
   const app = express();
   const PORT = 3000;
   const sessionSecret = process.env.SESSION_SECRET || "replace-me-in-production";
@@ -452,7 +462,7 @@ async function startServer() {
       let response;
       try {
         response = await ai.models.generateContent({
-          model: "gemini-1.5-flash",
+          model: "gemini-1.5-flash-8b",
           contents,
           config: {
             systemInstruction:
