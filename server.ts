@@ -21,7 +21,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 void __dirname;
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+// Initialize AI with environment-based config
+const ai = new GoogleGenAI();
 const prisma = new PrismaClient();
 const redisClient = createClient({ url: process.env.REDIS_URL || "redis://localhost:6379" });
 
@@ -461,8 +462,9 @@ async function startServer() {
       console.log(`Sending content to Gemini...`);
       let response;
       try {
+        // Try the stable 1.5 Flash model first
         response = await ai.models.generateContent({
-          model: "gemini-1.5-flash-8b",
+          model: "gemini-1.5-flash",
           contents,
           config: {
             systemInstruction:
@@ -470,9 +472,23 @@ async function startServer() {
             tools: [{ functionDeclarations: toolDefinitions }],
           },
         });
-      } catch (aiError: any) {
-        console.error("AI SDK Critical Error:", aiError);
-        return jsonError(res, 500, "AI_SDK_ERROR", aiError.message || "Failed to communicate with AI service.");
+      } catch (primaryErr: any) {
+        console.warn("Primary model (gemini-1.5-flash) failed, attempting fallback...", primaryErr.message);
+        try {
+          // Fallback to 1.5-flash-latest or 1.0 Pro
+          response = await ai.models.generateContent({
+            model: "gemini-1.5-flash-latest",
+            contents,
+            config: {
+              systemInstruction:
+                "You are an AI Supply Chain Copilot. Use tools for operational data and stay concise.",
+              tools: [{ functionDeclarations: toolDefinitions }],
+            },
+          });
+        } catch (aiError: any) {
+          console.error("AI SDK Critical Error (Fallback also failed):", aiError);
+          return jsonError(res, 500, "AI_SDK_ERROR", aiError.message || "Failed to communicate with AI service.");
+        }
       }
 
       let maxIterations = 5;
