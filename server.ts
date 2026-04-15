@@ -22,7 +22,7 @@ const __dirname = path.dirname(__filename);
 void __dirname;
 
 // Initialize AI with environment-based config
-const ai = new GoogleGenAI();
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const prisma = new PrismaClient();
 const redisClient = createClient({ url: process.env.REDIS_URL || "redis://localhost:6379" });
 
