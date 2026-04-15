@@ -458,8 +458,9 @@ async function startServer() {
 
       console.log(`Sending content to Gemini (Stable SDK - Robust Fallback)...`);
       let result;
-      const modelNames = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-1.5-flash-8b", "gemini-1.0-pro"];
+      const modelNames = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-1.5-pro", "gemini-1.0-pro"];
       let lastError = null;
+      let workingModelName = "";
 
       for (const modelName of modelNames) {
         try {
@@ -471,6 +472,7 @@ async function startServer() {
           });
           result = await model.generateContent({ contents });
           console.log(`Successfully connected using model: ${modelName}`);
+          workingModelName = modelName;
           break; // Found a working model!
         } catch (err: any) {
           console.warn(`Model ${modelName} failed: ${err.message}`);
@@ -563,7 +565,7 @@ async function startServer() {
         contents.push({ role: "function", parts: toolResponses });
 
         const model = genAI.getGenerativeModel({ 
-          model: "gemini-1.5-flash",
+          model: workingModelName,
           systemInstruction: "You are an AI Supply Chain Copilot. Use tools for operational data and stay concise.",
           tools: [{ functionDeclarations: toolDefinitions }] as any
         });
